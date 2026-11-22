@@ -325,7 +325,7 @@ flowchart LR
 
 ### What to send
 
-Open a GitHub issue at <https://github.com/thomasekdahlN/jeti/issues> titled `New turbine support: <make> <model>`, and attach the files. If you cannot use GitHub, email the author at thomas@ekdahl.no. Include:
+Open a GitHub issue at <https://github.com/thomasekdahlN/jeti-ecu-telemetry-dashboard/issues> titled `New turbine support: <make> <model>`, and attach the files. If you cannot use GitHub, email the author at thomas@ekdahl.no. Include:
 
 | Item | Example |
 | --- | --- |
