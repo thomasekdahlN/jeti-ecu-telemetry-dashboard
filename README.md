@@ -317,7 +317,7 @@ flowchart LR
    - the display only refreshes when you press a key, so press **F1** to update the live values
    - **Up/Down** scrolls when there are more rows than fit on screen
 5. **Make the values move.** Turn the turbine over, change throttle, and let the ECU step through its states while you press **F1** and watch the rows. Values that never change, or that stay `?`, tell the developer which parameters your converter does not provide.
-6. **Record the status codes by hand.** `senslist.lua` shows the raw numeric status value but not its meaning. Each time the turbine changes state, write down the number from the status row and the name the ECU or its manual gives that state (for example `9 = Burner on`). Also note error/failure codes if your ECU can produce them safely, for example from its manual or by triggering them on the bench.
+6. **Record the status codes by hand, or attach the manufacturer's documentation.** `senslist.lua` shows the raw numeric status value but not its meaning. If the manufacturer of your telemetry sensor or converter publishes a document listing the status codes, attach that instead (or as well) and you can skip the manual table. Otherwise, each time the turbine changes state, write down the number from the status row and the name the ECU or its manual gives that state (for example `9 = Burner on`). Also note error/failure codes if your ECU can produce them safely, for example from its manual or by triggering them on the bench.
 7. **Press F5** to save the discovery files. You get one file per sensor group at `Apps/<sensor label>.jsn` (existing files with the same name are overwritten). Press F5 while the turbine is running if you can, so the values and `max` fields in the files are realistic.
 8. **Copy the `Apps/*.jsn` files** off the transmitter. Only the files for your ECU/converter sensor group are needed, not unrelated sensors such as RX or battery telemetry.
 9. **Send the feedback** (see below).
@@ -334,7 +334,7 @@ Open a GitHub issue at <https://github.com/thomasekdahlN/jeti-ecu-telemetry-dash
 | ECU firmware version, if known | `v2.4` |
 | Transmitter model and `ecu.lc` or `ecu_16.lc` | `DS-24 II`, `ecu.lc` |
 | The `Apps/<sensor label>.jsn` file(s) from F5 | attached |
-| Status code table | see below |
+| Status code table, or the manufacturer's status code documentation | see below |
 | Whether fuel counts **down** (remaining) or **up** (consumed) | `fuel starts at tank size and goes down` |
 | Turbine data sheet or manual with limits | RPM min/max, EGT max, pump voltage limits, link or PDF |
 | A debug console log, if the ECU app shows `Err` | photo of the CMD screen |
