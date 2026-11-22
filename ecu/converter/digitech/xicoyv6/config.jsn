@@ -14,7 +14,7 @@
         "countingdown" : true
     },
     "statusmap" : {
-        "0"   : "Trim Low",
+        "0"   : "Trim low",
         "1"   : "Ready",
         "2"   : "Stick low",
         "3"   : "Glow test",

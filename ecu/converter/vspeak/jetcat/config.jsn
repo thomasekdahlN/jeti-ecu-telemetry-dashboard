@@ -33,7 +33,7 @@
         "-15"   : "Ignition time out",
         "-14"   : "Failsafe",
         "-13"   : "Watchdog",
-        "-12"   : "Glowplug",
+        "-12"   : "Glow plug",
         "-11"   : "High temp off",
         "-10"   : "Low temp off",
         "-9"    : "Over temperature",

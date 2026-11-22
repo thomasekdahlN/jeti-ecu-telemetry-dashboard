@@ -557,5 +557,23 @@
              "stick"     : "left",
              "vibrationProfile"   : 4
          }
+    },
+    "CAB-Lost"   : {
+        "text"      : "CAB-Lost",
+        "message"   : {
+            "enable" : true,
+            "seconds": 5
+         },
+         "audio" : {
+             "enable"    : true,
+             "repeat"    : 1,
+             "file"      : "Error.wav"
+         },
+         "haptic"    : {
+             "enable"    : true,
+             "repeat"    : 1,
+             "stick"     : "left",
+             "vibrationProfile"   : 4
+         }
     }
 }

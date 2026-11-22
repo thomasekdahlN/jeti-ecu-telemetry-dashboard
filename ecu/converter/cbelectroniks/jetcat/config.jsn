@@ -17,11 +17,11 @@
         "2"  : "Ignite",
         "3"  : "Accelerate",
         "4"  : "Stabilise",
-        "5"  : "Learn hi",
+        "5"  : "Learn high",
         "6"  : "Learn low",
-        "7"  : "(7)",
+        "7"  : "Unknown",
         "8"  : "Slow down",
-        "9"  : "(9)",
+        "9"  : "Unknown",
         "10" : "Auto off",
         "11" : "Run",
         "12" : "Accelerate delay",
@@ -30,7 +30,7 @@
         "15" : "Pre heat1",
         "16" : "Pre heat2",
         "17" : "Main fuel start",
-        "18" : "(18)",
+        "18" : "Unknown",
         "19" : "Kerosin full"        
     }
 }
