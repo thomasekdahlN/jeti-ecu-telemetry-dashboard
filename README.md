@@ -86,8 +86,9 @@ Your turbine or converter is not in the list? See [Is your turbine missing?](#-i
 | 🔊 | Supports status-driven voice, message, and haptic alerts where available |
 | 🔁 | Suppresses repeated alarms with timed cooldown behavior (30 s between repeats) |
 | 🧯 | Arms low-value alarms only after a sensor has reported a real reading, so 0.0 startup values never trigger false alarms |
+| 🛑 | Keeps RPM, EGT and pump low alarms quiet during planned stops (Stop, Cooling, Ready...), so a normal shutdown stays silent |
 | ⛽ | Handles fuel threshold warnings and critical alerts |
-| 📴 | Detects ECU offline conditions after signal loss |
+| 📴 | Detects ECU offline conditions after signal loss (status, RPM or EGT stop reporting) and repeats the warning up to 5 times |
 | 📈 | Logs every alarm and status change to the Jeti flight log timeline for post-flight analysis |
 | 🪲 | Reports important faults through a shared logger to make debugging easier |
 
@@ -151,11 +152,11 @@ Notes:
 | Alarm haptic control switch | separate per-channel switch | ➖ |
 | Alarm config format | nested objects with `audio`, `message`, `haptic` | plain numeric `high` / `low` thresholds |
 | Fuel alarms | multi-threshold array with full alarm objects | percentage `warning` and `critical` thresholds |
-| Config validation | strict, with logged errors per field | minimal, fails silently |
-| Config load protection | `pcall`-guarded | unguarded |
+| Config validation | strict, with logged errors per field | structure checks, errors via `print()` |
+| Config load protection | `pcall`-guarded | `pcall`-guarded |
+| Runtime loop protection | `pcall`-guarded, repeated warning on a fault | `pcall`-guarded, repeated warning on a fault |
 | Centralized logging | `loghelper.lua` (info/warn/error) | `print()` only |
 | Helper libraries | external `require` modules | all helpers inlined |
-| Transmitter control channel | ➖ | registers a turbine-off control output |
 | Config directories | `turbine/`, `batterypack/`, `fuel/` | `turbine_16/`, `batterypack_16/`, `fuel_16/` |
 
 ## 📟 Telemetry windows and visualization
@@ -205,7 +206,7 @@ The `-16` version registers **one telemetry window**:
 - turbine status text on the upper right
 - pump and ECU voltage readouts on the lower right
 
-RPM and EGT are not shown in the telemetry window in the low-memory version. The alarm system fires audio and a message box directly using `AUDIO_IMMEDIATE` rather than going through the shared alarm helper.
+RPM and EGT are not shown in the telemetry window in the low-memory version. The alarm system fires audio and a message box directly using `AUDIO_IMMEDIATE` rather than going through the shared alarm helper. Status changes always show a message, but only fault statuses (names such as failure, bad, flameout, high temp) also play a sound, and the alarm off switch silences all of it.
 
 ### Experimental windows
 
@@ -520,8 +521,11 @@ Use this checklist in order:
    - reopen setup and select the missing configuration items again
    - verify that the chosen converter/turbine combination actually exists in the repo-supported config set
 
+   - **`CONFIG ERR` / `NOT MONITORED`** means the selected configuration is unusable and **nothing is being monitored**. The app repeats an error sound and a message every 30 seconds until it is fixed. Check the debug console for the failing file, then reselect the configuration
+   - selecting the empty `...` entry in the sensor menu switches monitoring off (`NO CONFIG`)
+
 7. **If the app says `OFFLINE`**
-   - the app started, but the expected telemetry is not currently valid
+   - the app started, but the critical telemetry (status, RPM, EGT) is not currently valid
    - verify the ECU is powered, the converter is connected, and the correct telemetry sensor was selected
 
 8. **If the log mentions missing or invalid JSON**
@@ -1110,6 +1114,8 @@ The repository includes helper script for preparing a Jeti app-store style archi
 - `pack_for_jeti_appstore.sh`
 
 This script collects the compiled `.lc` files, the `ecu/` assets, and supporting metadata into a distributable archive.
+
+The `.lc` files are compiled with Jeti Studio, not by the script. It stops without packaging anything if a required `.lc` file is missing or older than its `.lua` source, because the sources are removed from the package and a stale `.lc` would ship old code. Recompile after every code change.
 
 ### External documentation
 
