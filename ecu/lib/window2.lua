@@ -95,6 +95,12 @@ function telemetry_window2.show(width, height)
         return
     end
 
+    if(sensorState.configError) then
+        lcd.drawText(5,5, "CONFIG ERR", FONT_BIG)
+        lcd.drawText(5,35, "NOT MONITORED", FONT_BOLD)
+        return
+    end
+
     if(not sensorState.allOnline) then
         drawStateText("OFFLINE")
         return

@@ -96,6 +96,14 @@ local function drawOfflineState()
 end
 
 ----------------------------------------------------------------------
+-- The configuration is unusable, so nothing is being monitored
+local function drawConfigError()
+    lcd.drawText(5,5, "CONFIG ERR", FONT_BIG)
+    lcd.drawText(5,35, "NOT MONITORED", FONT_BOLD)
+    lcd.drawText(5,52, "See debug log", FONT_MINI)
+end
+
+----------------------------------------------------------------------
 -- Print the telemetry values
 function telemetry_window1.show(width, height)
     local sensorID, sensorTable, config, sensorState = getState()
@@ -103,6 +111,11 @@ function telemetry_window1.show(width, height)
 
     if(sensorID == 0) then
         drawTurbineStatus("NO CONFIG", 50, 0)
+        return
+    end
+
+    if(sensorState.configError) then
+        drawConfigError()
         return
     end
 

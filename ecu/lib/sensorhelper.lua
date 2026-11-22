@@ -30,8 +30,6 @@ function sensorhelper.getSensorTable(sensorID)
             end      
         end
     end
-    collectgarbage()
-
     return tmpSensorTable, tmpMenuTable, tmpIndex
 end
 

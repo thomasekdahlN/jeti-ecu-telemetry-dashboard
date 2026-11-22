@@ -94,7 +94,7 @@ function alarmhelper.Audio(tmpConfig)
 
         if(audioFile) then
             pcall(function() audioFile:close() end)
-            system.playFile(audioPath, AUDIO_QUEUE)
+            system.playFile(audioPath, AUDIO_IMMEDIATE) -- alarms must not wait behind queued audio
         else
             logh.warn("alarmhelper.Audio", string.format("Missing audio file: %s", audioPath))
         end

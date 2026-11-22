@@ -48,8 +48,6 @@ function tablehelper.fromDirectory(path, choice)
             end
         end
     end
-    collectgarbage()
-
     return tmpTable, tmpIndex
 end
 
@@ -62,8 +60,6 @@ function tablehelper.fromFiles(path, choice)
     local iterator
     local state
     local control
-
-    collectgarbage()
 
     if(type(path) ~= "string" or path == "") then
         logh.error("tablehelper.fromFiles", string.format("Invalid file path: %s", tostring(path)))

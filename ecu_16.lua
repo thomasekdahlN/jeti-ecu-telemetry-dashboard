@@ -12,18 +12,65 @@
 -- # 0.9 - Initial release
 -- ############################################################################# 
 
--- Globals to be accessible also from libraries
+-- Complete turbine config object dynamically assembled (everything here is local to keep the shared Lua environment clean)
 local config          = {"..."} -- Complete turbine config object dynamically assembled
---SensorT = {    -- Sensor objects is globally stored here and accessible by sensorname as configured in ecu converter
+-- Sensor entries by sensorname as configured in the ecu converter, created by readParamsFromSensor
+local SensorT           = {}
+local SensorMenuSensors = {"..."} -- Sensors offered in the setup menu (index 1 is the "..." placeholder)
+local EMPTY_SENSOR      = {value = 0, max = 0, valid = false} -- Shared stand-in for missing sensors, never written
+local configValid       = false   -- false = config unusable, nothing is monitored
+local nextFaultAlert    = 0       -- Next time the "monitoring is off" warning may repeat
+-- While the turbine is in a planned stop state, RPM, EGT and pump voltage fall below their low
+-- limits on purpose, so those low alarms are not armed. The ECU battery stays armed.
+local turbineStopped    = false
+local offlineAlerts     = 0       -- ECU offline warnings given since the ECU was last online
+local nextOfflineAlert  = 0
 
-SensorT = {
-    rpm      = {"..."},
-    egt      = {"..."},
-    pumpv    = {"..."},
-    ecuv     = {"..."},
-    fuel     = {"..."},
-    status   = {"..."}
- }
+-- Monotonic seconds since the transmitter started. system.getTime() is the wall clock and jumps
+-- when the date/time is changed, which would stretch or cut the alarm cooldown windows.
+local function nowSeconds()
+    return system.getTimeCounter() // 1000
+end
+
+-- Sensors that must be valid for the ECU to count as online
+local CRITICAL_SENSORS = {status = true, rpm = true, egt = true}
+
+-- Status names that deserve audio (faults); other statuses only show a message (silent cockpit)
+local FAULT_WORDS = {"fail", "error", "bad", "flameout", "high temp", "low rpm", "speed low", "overload",
+    "battery low", "time out", "timeout", "lost", "emergency", "unknown", "weak", "over ", "no ", "wrong",
+    "comm", "diff", "watchdog", "glow plug", "reboot", "accelerate slow", "clutch", "out of fuel",
+    "temp off", "power", "max rpm", "supply"}
+
+-- Planned stop states, where RPM/EGT/pump voltage fall below their low limits on purpose
+local STOPPED_WORDS = {"stop", "off", "cool", "ready", "lock", "standby", "trim low", "stick low"}
+
+local function hasWord(text, words)
+    local lowered = string.lower(text)
+
+    for i = 1, #words do
+        if(string.find(lowered, words[i], 1, true)) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Menu tables start with a "..." placeholder that is not a real selection
+local function selected(options, value)
+    local item = options[value]
+
+    if(item == nil or item == "...") then
+        return nil
+    end
+    return item
+end
+
+local function realValue(value, default)
+    if(type(value) ~= "string" or value == "" or value == "...") then
+        return default
+    end
+    return value
+end
 
 -- Locals for the application
 local enableAlarm                 = false
@@ -66,12 +113,17 @@ local TurbineConfig         = "generic"  -- the turbine config file chosen
 local BatteryConfigTable    = {"..."}   -- Array with all available config fields
 local BatteryConfig         = "life-2s"  -- the battery config file chosen
 
-function fileJson(filename)
+local function fileJson(filename)
     local structure
     local file = io.readall(filename)
 
     if(file) then
-        structure = json.decode(file)
+        local decodeOk
+        decodeOk, structure = pcall(json.decode, file)
+        if(not decodeOk) then
+            print(string.format("Invalid json: %s (%s)", filename, tostring(structure)))
+            return nil
+        end
         if(structure) then
             collectgarbage()
             print(string.format("fileJson: %s - mem %s ", filename, collectgarbage("count")))
@@ -84,7 +136,7 @@ function fileJson(filename)
     end
 end 
 
-function fromDirectory(path, choice)
+local function fromDirectory(path, choice)
     local tmpTable = {"..."}
     local tmpIndex = 1
 
@@ -107,7 +159,7 @@ end
 
 --------------------------------------------------------------------
 -- Read all files in a folder and put it in a table to be used to create a menu
-function fromFiles(path, choice)
+local function fromFiles(path, choice)
     local tmpTable = {"..."}
     local tmpIndex = 1
 
@@ -129,33 +181,9 @@ function fromFiles(path, choice)
     return tmpTable, tmpIndex
 end
 
-function getSensorParamTable(sensorID, sensorParam)
-    local tmpSensorTable = {"..."}
-    local tmpMenuTable   = {"..."}
-    local tmpIndex       = 1
-    local descr          = ""
-
-    for index,sensor in ipairs(system.getSensors()) do 
-        if(sensor.param == 0) then
-            descr = sensor.label
-        else
-            tmpSensorTable[#tmpSensorTable+1] = sensor -- global sensor array
-            tmpMenuTable[#tmpMenuTable+1]=string.format("%s - %s [%s]",descr,sensor.label,sensor.param) -- Menu table, added param for config purposes
-
-            --print(string.format("SensorID: %s=%s, param: %s=%s", sensor.id, statusSensor1ID, sensor.param, tonumber(config.status.sensor.param)))
-            if(sensor.id==sensorID and sensor.param==tonumber(sensorParam)) then
-                tmpIndex=#tmpMenuTable
-            end      
-        end
-    end
-    collectgarbage()
-
-    return tmpSensorTable, tmpMenuTable, tmpIndex
-end
-
 --------------------------------------------------------------------
 -- Generates a sensor menu, returns sensor table and index choice for GUI generation
-function getSensorTable(sensorID)
+local function getSensorTable(sensorID)
     local tmpSensorTable = {"..."}
     local tmpMenuTable   = {"..."}
     local tmpIndex = 1
@@ -219,55 +247,127 @@ local function DrawBattery(u_pump, u_ecu, ox, oy)
   lcd.drawText(4+ox,12+oy,  string.format("%.1f%s",u_pump,"V"), FONT_BOLD)
   lcd.drawText(45+ox,12+oy, string.format("%.1f%s",u_ecu,"V"), FONT_BOLD)
 end
-function window(width, height)  
+local function window(width, height)  
     -- field separator lines
     lcd.drawLine(45,2,45,66)  
     lcd.drawLine(45,36,148,36)  
 
-    if(SensorID ~= 0) then
+    if(SensorID ~= 0 and configValid) then
+        local sensormap = config.converter.sensormap
+        local fuel      = SensorT.fuel
+        local status    = SensorT.status
+        local pump      = SensorT.pumpv
+        local ecu       = SensorT.ecuv
 
-        if(config.converter.sensormap.fuel) then 
-            if(SensorT.fuel.percent) then
-                DrawFuelGauge(SensorT.fuel.percent, 1, 0)
-            end
+        if(sensormap.fuel and fuel and fuel.percent) then
+            DrawFuelGauge(fuel.percent, 1, 0)
         end
 
         -- turbine
-        if(config.converter.sensormap.status) then
-            if(SensorT.status.text) then
-                DrawTurbineStatus(SensorT.status.text, 50, 0)
-            else
-                DrawTurbineStatus("UNKNOWN", 50, 0)
-            end
+        if(sensormap.status) then
+            DrawTurbineStatus(status and status.text or "UNKNOWN", 50, 0)
         else
             DrawTurbineStatus("UNCONFIG", 50, 0)
         end
 
         -- battery
-        if(config.converter.sensormap.pumpv and SensorT.pumpv.sensor.value and SensorT.ecuv.sensor.value) then
-            DrawBattery(SensorT.pumpv.sensor.value, SensorT.ecuv.sensor.value, 50, 37)
+        if(sensormap.pumpv and pump and pump.sensor and ecu and ecu.sensor) then
+            DrawBattery(pump.sensor.value, ecu.sensor.value, 50, 37)
         end
+    elseif(SensorID ~= 0) then
+        DrawTurbineStatus("CONFIG ERR", 50, 0)
+        lcd.drawText(50,37, "NOT MONITORED", FONT_MINI)
     else
         DrawTurbineStatus("NO CONFIG", 50, 0)
     end
 end
 
-local function loadConfig()
-    -- Load main turbine config    
-    config      = fileJson(string.format(string.format("Apps/ecu/turbine_16/%s/%s.jsn", TurbineType, TurbineConfig)))
+-- True if the converter maps the sensor to a Jeti param number (> 0)
+local function mapped(sensorName)
+    return type(config.converter) == "table"
+        and type(config.converter.sensormap) == "table"
+        and (tonumber(config.converter.sensormap[sensorName]) or 0) > 0
+end
+
+-- The loop dereferences these fields, so an incomplete config is rejected here instead of
+-- failing while the turbine is running.
+local function validateConfig()
+    if(type(config.converter) ~= "table" or type(config.converter.sensormap) ~= "table") then
+        print("ECU-16: missing converter sensormap")
+        return false
+    end
+
+    for _, sensorName in ipairs({"rpm", "egt", "pumpv", "ecuv"}) do
+        if(mapped(sensorName)) then
+            local c = config[sensorName]
+            if(type(c) ~= "table" or c.sensorname ~= sensorName or type(c.high) ~= "number" or type(c.low) ~= "number") then
+                print(string.format("ECU-16: invalid high/low config: %s", sensorName))
+                return false
+            end
+        end
+    end
+
+    if(mapped("fuel")) then
+        local f = config.fuel
+        if(type(f) ~= "table" or f.sensorname ~= "fuel" or type(f.tanksize) ~= "number"
+            or type(f.warning) ~= "number" or type(f.critical) ~= "number"
+            or type(config.converter.fuel) ~= "table") then
+            print("ECU-16: invalid fuel config")
+            return false
+        end
+    end
+
+    if(mapped("status")) then
+        if(type(config.converter.statusmap) ~= "table" or type(config.status) ~= "table" or config.status.sensorname ~= "status") then
+            print("ECU-16: invalid status config")
+            return false
+        end
+    end
+
+    return true
+end
+
+local function readConfig()
+    -- Load main turbine config
+    local turbine = fileJson(string.format("Apps/ecu/turbine_16/%s/%s.jsn", TurbineType, TurbineConfig))
     collectgarbage()
 
+    if(type(turbine) ~= "table") then
+        turbine = {}
+    end
+
     -- Generic config loading adding to default turbine config
-    config.ecuv      = fileJson(string.format("Apps/ecu/batterypack_16/%s.jsn", BatteryConfig))
-    config.fuel     = fileJson("Apps/ecu/fuel_16/config.jsn")
-    config.converter = fileJson(string.format("Apps/ecu/converter/%s/%s/config.jsn", ConverterType, TurbineType))
+    turbine.ecuv      = fileJson(string.format("Apps/ecu/batterypack_16/%s.jsn", BatteryConfig))
+    turbine.fuel      = fileJson("Apps/ecu/fuel_16/config.jsn")
+    turbine.converter = fileJson(string.format("Apps/ecu/converter/%s/%s/config.jsn", ConverterType, TurbineType))
+    config = turbine
     collectgarbage()
-end 
+end
+
+local function loadConfig()
+    local ok, err = pcall(readConfig)
+
+    if(not ok) then
+        config = {}
+        print(string.format("ECU-16: config load failed: %s", tostring(err)))
+    end
+
+    configValid = ok and validateConfig()
+    if(not configValid) then
+        system.messageBox("ECU: invalid config, NOT monitored", 3)
+    end
+end
 
 ----------------------------------------------------------------------
 --
 local function ConverterTypeChanged(value)
-    ConverterType  = ConverterTypeTable[value] --The value is local to this function and not global to script, hence it must be set explicitly.
+    local selection = selected(ConverterTypeTable, value)
+
+    if(not selection) then
+        return
+    end
+
+    ConverterType = selection
     print(string.format("ConverterTypeSave %s = %s", value, ConverterType))
     system.pSave("ConverterType",  ConverterType)
     TurbineTypeTable    = fromDirectory(string.format("Apps/ecu/converter/%s", ConverterType), nil)
@@ -277,7 +377,13 @@ end
 ----------------------------------------------------------------------
 --
 local function TurbineTypeChanged(value)
-    TurbineType  = TurbineTypeTable[value] --The value is local to this function and not global to script, hence it must be set explicitly.
+    local selection = selected(TurbineTypeTable, value)
+
+    if(not selection) then
+        return
+    end
+
+    TurbineType = selection
     system.pSave("TurbineType", TurbineType)
     TurbineConfigTable  = fromFiles(string.format("Apps/ecu/turbine_16/%s", TurbineType), nil)
     loadConfig() -- reload after config change
@@ -286,7 +392,13 @@ end
 ----------------------------------------------------------------------
 --
 local function TurbineConfigChanged(value)
-    TurbineConfig  = TurbineConfigTable[value] --The value is local to this function and not global to script, hence it must be set explicitly.
+    local selection = selected(TurbineConfigTable, value)
+
+    if(not selection) then
+        return
+    end
+
+    TurbineConfig = selection
     system.pSave("TurbineConfig", TurbineConfig)
     loadConfig() -- reload after config change
 end
@@ -294,7 +406,13 @@ end
 ----------------------------------------------------------------------
 --
 local function BatteryConfigChanged(value)
-    BatteryConfig  = BatteryConfigTable[value] --The value is local to this function and not global to script, hence it must be set explicitly.
+    local selection = selected(BatteryConfigTable, value)
+
+    if(not selection) then
+        return
+    end
+
+    BatteryConfig = selection
     system.pSave("BatteryConfig", BatteryConfig)
     loadConfig() -- reload after config change
 end
@@ -302,17 +420,25 @@ end
 --------------------------------------------------------------------
 -- Store settings when changed by user
 local function SensorChanged(value)
-	SensorID  = SensorT[value].id
-	system.pSave("SensorID",  SensorID)
+    local sensor = SensorMenuSensors[value]
+
+    -- Index 1 is the "..." placeholder (a string) = no sensor selected.
+    -- SensorID 0 disables monitoring instead of leaving a nil id for the loop.
+    if(type(sensor) == "table" and type(sensor.id) == "number") then
+        SensorID = sensor.id
+    else
+        SensorID = 0
+    end
+    system.pSave("SensorID", SensorID)
 end
 
 ----------------------------------------------------------------------
 --
 local function initForm(subform)
     -- make all the dynamic menu items
-    local ConverterTypeIndex, TurbineTypeIndex, TurbineConfigIndex, BatteryConfigIndex, SensorIndex = 1,1,1,1,1
+    local ConverterTypeIndex, TurbineTypeIndex, TurbineConfigIndex, BatteryConfigIndex, SensorMenuIndex = 1,1,1,1,1
     local SensorMenuT = {"..."}
-    SensorT, SensorMenuT, SensorMenuIndex = getSensorTable(SensorID)
+    SensorMenuSensors, SensorMenuT, SensorMenuIndex = getSensorTable(SensorID)
     collectgarbage()
 
     ConverterTypeTable, ConverterTypeIndex  = fromDirectory("Apps/ecu/converter", ConverterType)
@@ -373,7 +499,7 @@ end
 local function initFuelStatistics(tmpCfg)
 
     -- We only enable the low alarms after they have passed the low threshold
-    if(SensorT[tmpCfg.sensorname].sensor.value > tmpCfg.warning.value and not alarmLowValuePassed[tmpCfg.sensorname]) then
+    if(SensorT[tmpCfg.sensorname].sensor.value > tmpCfg.warning and not alarmLowValuePassed[tmpCfg.sensorname]) then
         alarmLowValuePassed[tmpCfg.sensorname] = true;
     end
 
@@ -426,16 +552,16 @@ local function processFuel(tmpCfg, tmpSensorID)
         
         -- Check for alarm thresholds
         if(enableAlarm and alarmLowValuePassed[tmpCfg.sensorname]) then
-            if(alarmTriggeredTime[tmpCfg.sensorname] < system.getTime()) then
+            if(alarmTriggeredTime[tmpCfg.sensorname] < nowSeconds()) then
                 if(SensorT[tmpCfg.sensorname].percent < tmpCfg.critical) then
 
-                    alarmTriggeredTime[tmpCfg.sensorname] = system.getTime() + 20
+                    alarmTriggeredTime[tmpCfg.sensorname] = nowSeconds() + 20
                     system.messageBox(string.format("%s (%s < %s)", 'fuel critical', SensorT[tmpCfg.sensorname].percent, tmpCfg.critical))
                     system.playFile("/Apps/ecu/audio/fuel_critical.wav",AUDIO_IMMEDIATE)
             
                 elseif(SensorT[tmpCfg.sensorname].percent < tmpCfg.warning) then
 
-                    alarmTriggeredTime[tmpCfg.sensorname]  = system.getTime() + 15
+                    alarmTriggeredTime[tmpCfg.sensorname]  = nowSeconds() + 15
                     system.messageBox(string.format("%s (%s < %s)", 'fuel warning', SensorT[tmpCfg.sensorname].percent, tmpCfg.warning))
                     system.playFile("/Apps/ecu/audio/fuel_warning.wav",AUDIO_IMMEDIATE)
                  end
@@ -461,21 +587,22 @@ local function processGeneric(tmpCfg, tmpSensorID)
             SensorT[tmpCfg.sensorname].percent = calcPercent(SensorT[tmpCfg.sensorname].sensor.value, tmpCfg.high, tmpCfg.low)
 
             if(enableAlarm) then
-                if(alarmTriggeredTime[tmpCfg.sensorname] < system.getTime()) then
+                if(alarmTriggeredTime[tmpCfg.sensorname] < nowSeconds()) then
 
                     -- Arm only after grace period so transient startup values cannot pre-arm the flag.
                     local armThreshold = (tmpCfg.sensorname == "ecuv") and 0 or tmpCfg.low
-                    if(SensorT[tmpCfg.sensorname].sensor.value > armThreshold and not alarmLowValuePassed[tmpCfg.sensorname]) then
+                    if(SensorT[tmpCfg.sensorname].sensor.value > armThreshold and not alarmLowValuePassed[tmpCfg.sensorname]
+                        and not (turbineStopped and tmpCfg.sensorname ~= "ecuv")) then
                         alarmLowValuePassed[tmpCfg.sensorname] = true
                     end
 
                     if(SensorT[tmpCfg.sensorname].sensor.value > tmpCfg.high) then
-                        alarmTriggeredTime[tmpCfg.sensorname] = system.getTime() + 30
+                        alarmTriggeredTime[tmpCfg.sensorname] = nowSeconds() + 30
                         system.messageBox(string.format("%s high (%s > %s)", tmpCfg.sensorname, SensorT[tmpCfg.sensorname].sensor.value, tmpCfg.high), 5)
                         system.playFile(string.format("/Apps/ecu/audio/%s_high.wav", tmpCfg.sensorname),AUDIO_IMMEDIATE)
                 
                     elseif(SensorT[tmpCfg.sensorname].sensor.value < tmpCfg.low and alarmLowValuePassed[tmpCfg.sensorname]) then
-                        alarmTriggeredTime[tmpCfg.sensorname] = system.getTime() + 30
+                        alarmTriggeredTime[tmpCfg.sensorname] = nowSeconds() + 30
                         system.messageBox(string.format("%s low (%s < %s)", tmpCfg.sensorname, SensorT[tmpCfg.sensorname].sensor.value, tmpCfg.low), 5)
                         system.playFile(string.format("/Apps/ecu/audio/%s_low.wav", tmpCfg.sensorname),AUDIO_IMMEDIATE)
                     end
@@ -486,47 +613,82 @@ local function processGeneric(tmpCfg, tmpSensorID)
 end
 
 ----------------------------------------------------------------------
--- 
-local function processStatus(tmpCfg, tmpSensorID)
-    local statusint = 0
+-- A planned stop must not raise RPM/EGT/pump "low" alarms while the turbine spools down.
+-- They are armed again by the next run (a real reading above the low limit).
+local function disarmLowAlarms()
+    alarmLowValuePassed.rpm   = false
+    alarmLowValuePassed.egt   = false
+    alarmLowValuePassed.pumpv = false
+end
 
-    if(SensorT[tmpCfg.sensorname].sensor.valid) then
-        statusint = string.format("%s", math.floor(SensorT[tmpCfg.sensorname].sensor.value))
-        SensorT[tmpCfg.sensorname].text = config.converter.statusmap[statusint]
+----------------------------------------------------------------------
+-- Play the status sound, or the generic error sound if the status has no sound file
+local function playStatusAudio(statusText)
+    local path = string.format("/Apps/ecu/audio/%s.wav", statusText)
+    local file = io.open(path, "r")
 
-        -- Fallback label for unknown status codes
-        if(not SensorT[tmpCfg.sensorname].text) then
-            SensorT[tmpCfg.sensorname].text = string.format("Status %s", statusint)
-        end
-
-        -- If status hasn't changed since last check, nothing to do
-        if(prevStatusID == SensorT[tmpCfg.sensorname].text) then
-            return
-        end
-
-        -- Always track the current status, even during startup suppression,
-        -- so that the stable at-rest state doesn't trigger an alarm when suppression lifts
-        prevStatusID = SensorT[tmpCfg.sensorname].text
-
-        -- Suppress alarms during the startup cooldown window
-        if(alarmTriggeredTime.status >= system.getTime()) then
-            return
-        end
-
-        print(string.format("statusint #%s#", statusint))
-        system.messageBox(SensorT[tmpCfg.sensorname].text, 5)
-        print(string.format("/Apps/ecu/audio/%s.wav", SensorT[tmpCfg.sensorname].text))
-        system.playFile(string.format("/Apps/ecu/audio/%s.wav", SensorT[tmpCfg.sensorname].text), AUDIO_IMMEDIATE)
+    if(file) then
+        pcall(io.close, file)
     else
-        SensorT[tmpCfg.sensorname].text = "OFFLINE"
+        path = "/Apps/ecu/audio/Error.wav"
+    end
+    system.playFile(path, AUDIO_IMMEDIATE)
+end
+
+----------------------------------------------------------------------
+-- Show status changes. Only fault statuses get audio, and the alarm off switch silences everything.
+local function processStatus(tmpCfg, tmpSensorID)
+    local entry  = SensorT[tmpCfg.sensorname]
+    local sensor = entry.sensor
+    local statusint
+    local text
+
+    if(not sensor.valid) then
+        entry.text = "OFFLINE"
+        return
+    end
+
+    statusint  = string.format("%s", math.floor(sensor.value))
+    text       = config.converter.statusmap[statusint] or string.format("Status %s", statusint) -- Fallback label for unknown codes
+    entry.text = text
+
+    -- If status hasn't changed since last check, nothing to do
+    if(prevStatusID == text) then
+        return
+    end
+
+    -- Always track the current status, even during startup suppression,
+    -- so that the stable at-rest state doesn't trigger an alarm when suppression lifts
+    prevStatusID = text
+
+    turbineStopped = hasWord(text, STOPPED_WORDS)
+    if(turbineStopped) then
+        disarmLowAlarms()
+    end
+
+    -- Suppress alarms during the startup cooldown window, or while the alarm off switch is active
+    if(alarmTriggeredTime.status >= nowSeconds() or not enableAlarm) then
+        return
+    end
+
+    system.messageBox(text, 5)
+    if(hasWord(text, FAULT_WORDS)) then
+        playStatusAudio(text)
     end
 end
 
 ----------------------------------------------------------------------
 -- Check if switch to enable alarms is set, sets global enableAlarm value
 local function enableAlarmCheck()
+    local switch
+
+    if(not alarmOffSwitch) then
+        enableAlarm = true -- no switch assigned, alarms are always on
+        return
+    end
+
     switch = system.getSwitchInfo(alarmOffSwitch)
-    if(switch) then
+    if(switch and switch.assigned ~= false) then -- an unassigned switch never disables the alarms
         if(switch.value < 0) then  -- turned off by switch, will always override status handling
             enableAlarm      = false
         else
@@ -543,38 +705,81 @@ local function readParamsFromSensor(tmpSensorID)
 
     local countSensorsValid = 0
     local countSensors      = 0
+    local countCritical     = 0
+    local countCriticalValid = 0
+    local online
+    local entry
+    local sensor
+    local param
 
     for tmpSensorName, tmpSensorParam in pairs(config.converter.sensormap) do
-        if(tonumber(tmpSensorParam) > 0) then
-            --print(string.format("rsensor: %s : %s : %s", tmpSensorID, tmpSensorName, tonumber(tmpSensorParam)))
-            SensorT[tmpSensorName] = {"..."} -- Have to get rid of this, to get speed up.
-            SensorT[tmpSensorName].sensor = system.getSensorByID(tmpSensorID, tonumber(tmpSensorParam))
+        entry = SensorT[tmpSensorName]
+        if(not entry) then
+            entry = {percent = 0}
+            SensorT[tmpSensorName] = entry
+        end
 
-            if(SensorT[tmpSensorName].sensor) then
-                countSensors = countSensors + 1
+        param  = tonumber(tmpSensorParam) or 0
+        sensor = nil
+        if(param > 0) then
+            --print(string.format("rsensor: %s : %s : %s", tmpSensorID, tmpSensorName, param))
+            sensor = system.getSensorByID(tmpSensorID, param) -- nil if the sensor is unknown
+        end
 
-                if(not SensorT[tmpSensorName].sensor.valid) then
-                    -- The sensor exist, but is not valid yet.
-                    SensorT[tmpSensorName].sensor.value = 0
-                    SensorT[tmpSensorName].percent      = 0
-                else
-                    countSensorsValid = countSensorsValid + 1
+        if(sensor) then
+            countSensors = countSensors + 1
+            if(CRITICAL_SENSORS[tmpSensorName]) then
+                countCritical = countCritical + 1
+            end
+
+            if(sensor.valid) then
+                countSensorsValid = countSensorsValid + 1
+                if(CRITICAL_SENSORS[tmpSensorName]) then
+                    countCriticalValid = countCriticalValid + 1
                 end
             else
-                -- The sensor does not exist, ignore it. (not counting, no values)
+                -- The sensor exist, but is not valid yet.
+                sensor.value  = 0
+                entry.percent = 0
             end
+            entry.sensor = sensor
         else
-            -- Param is zero, so this sensor does not exist for this converter, we fake it with zero values.
-            SensorT[tmpSensorName].sensor.value = 0
-            SensorT[tmpSensorName].percent      = 0
+            -- The sensor does not exist, or the param is zero (not provided by this converter).
+            -- Use the shared zero sensor so the process functions never see a nil sensor.
+            entry.sensor  = EMPTY_SENSOR
+            entry.percent = 0
         end
     end
 
-    -- On the first loop where every configured sensor is valid, start a 30-second
-    -- status-alarm suppression window so ECU boot states are silently recorded.
-    if(countSensors > 0 and countSensorsValid == countSensors and not hadFullSignal) then
-        hadFullSignal = true
-        alarmTriggeredTime.status = system.getTime() + 30
+    -- Online means every critical sensor (status, rpm, egt) is valid. Converters without any
+    -- of them fall back to requiring all of their sensors.
+    if(countCritical > 0) then
+        online = (countCriticalValid == countCritical)
+    else
+        online = (countSensors > 0 and countSensorsValid == countSensors)
+    end
+
+    if(online) then
+        offlineAlerts = 0
+        -- On the first loop where the ECU is online, start a 30-second status-alarm
+        -- suppression window so ECU boot states are silently recorded.
+        if(not hadFullSignal) then
+            hadFullSignal = true
+            alarmTriggeredTime.status = nowSeconds() + 30
+        end
+    elseif((hadFullSignal or offlineAlerts > 0) and offlineAlerts < 5 and nextOfflineAlert < nowSeconds()) then
+        -- The ECU was online and stopped reporting. Warn a few times (one announcement is easy to miss),
+        -- then stay quiet until it has been online again.
+        nextOfflineAlert = nowSeconds() + 15
+        offlineAlerts    = offlineAlerts + 1
+        hadFullSignal    = false
+        print(string.format("ECU-16: ECU offline - critical sensors valid: %s of %s", countCriticalValid, countCritical))
+
+        if(enableAlarm) then
+            system.messageBox("ECU offline", 3)
+            system.playFile("/Apps/ecu/audio/Ecu offline.wav", AUDIO_IMMEDIATE)
+            system.vibration(false, 4)
+        end
     end
 end
 
@@ -584,37 +789,76 @@ local function init()
     -- Load translation files  
     system.registerForm(1,MENU_APPS,lang.appName, initForm, keyPressed)
     SensorID          = system.pLoad("SensorID", 0)
-    ConverterType     = system.pLoad("ConverterType", "vspeak")
-    TurbineType       = system.pLoad("TurbineType", "hornet")
-    TurbineConfig     = system.pLoad("TurbineConfig", "generic")
-    BatteryConfig     = system.pLoad("BatteryConfig", 'lipo-2s')
-    TankSize          = system.pLoad("TankSize", 0)
+    ConverterType     = realValue(system.pLoad("ConverterType", "vspeak"), "vspeak")
+    TurbineType       = realValue(system.pLoad("TurbineType", "hornet"), "hornet")
+    TurbineConfig     = realValue(system.pLoad("TurbineConfig", "generic"), "generic")
+    BatteryConfig     = realValue(system.pLoad("BatteryConfig", 'lipo-2s'), "lipo-2s")
+    TankSize          = system.pLoad("TankSize", 3500)
     alarmOffSwitch    = system.pLoad("alarmOffSwitch")
     -- read all the config files
     loadConfig()
     system.registerTelemetry(1, string.format("%s - 16", lang.window1),2,window)
-    ctrlIdx = system.registerControl(1, "Turbine off switch","TurbOff")
     collectgarbage()
     print("Init finished: ", collectgarbage("count"))
 end
 ----------------------------------------------------------------------
+-- One cycle of sensor reading and alarm processing (called through pcall from loop)
+local function loopBody()
+    enableAlarmCheck()
+    readParamsFromSensor(SensorID) -- Real sensor values
+
+    -- Only process sensors the converter maps, since the availibility varies
+    if(mapped("fuel")) then
+        processFuel(config.fuel, SensorID)
+    end
+    if(mapped("rpm")) then
+        processGeneric(config.rpm, SensorID)
+    end
+    if(mapped("egt")) then
+        processGeneric(config.egt, SensorID)
+    end
+    if(mapped("pumpv")) then
+        processGeneric(config.pumpv, SensorID)
+    end
+    if(mapped("ecuv")) then
+        processGeneric(config.ecuv, SensorID)
+    end
+    if(mapped("status")) then
+        processStatus(config.status, SensorID)
+    end
+end
+
+----------------------------------------------------------------------
 -- Loop has to be the last function, so every other function is initialized
 local function loop()
+    local ok
+    local err
+    local now
 
-    if(SensorID ~= 0) then
-        enableAlarmCheck()
-        readParamsFromSensor(SensorID) -- Real sensor values
-        -- All converters has these sensors
-        processFuel(config.fuel, SensorID)
-        processGeneric(config.rpm, SensorID)
-        processGeneric(config.egt, SensorID)
-        processGeneric(config.pumpv, SensorID)
-        processGeneric(config.ecuv, SensorID)
-        -- Check if converter has these sensor before processing them, since the availibility varies
-        if(config.converter.sensormap.status) then
-            processStatus(config.status, SensorID)
+    if(not SensorID or SensorID == 0) then
+        return
+    end
+
+    -- A Lua error must never stop the app silently, and an unusable config must never look like
+    -- a working one: warn (throttled) while nothing is being monitored.
+    if(configValid) then
+        ok, err = pcall(loopBody)
+    else
+        ok, err = false, "Configuration invalid"
+    end
+
+    if(not ok) then
+        now = nowSeconds()
+        if(now >= nextFaultAlert) then
+            nextFaultAlert = now + 30
+            print(string.format("ECU-16: monitoring is OFF: %s", tostring(err)))
+            system.messageBox(configValid and "ECU: monitoring fault" or "ECU: config invalid, NOT monitored", 3)
+            system.playFile("/Apps/ecu/audio/Error.wav", AUDIO_IMMEDIATE)
         end
     end
 end
+
 lang = fileJson(string.format("Apps/ecu/locale/%s.jsn", system.getLocale()))
+    or fileJson("Apps/ecu/locale/en.jsn")
+    or {appName = "ECU", window1 = "ECU", window2 = "ECU"}
 return {init=init, loop=loop, author="Thomas Ekdahl - thomas@ekdahl.no", version='3.0', name=string.format("%s -16", lang.appName)}
