@@ -27,6 +27,8 @@ If you want the shortest path to a working setup:
 5. verify the app starts without `Err`
 6. if it shows `Err`, open the debug console and use the log output to find the failing config or sensor mapping
 
+Your turbine or converter is not in the list? See [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua) to send the developer the data needed to add it.
+
 ## Features
 
 - silent-cockpit behavior: stays quiet in normal operation and only alerts on real alarm conditions
@@ -216,6 +218,103 @@ Notes:
 - some names intentionally differ between converter and turbine families, for example `vspeak -> kingtech` and `kingtech -> kingtechg1`…`kingtechg5`
 - the `ecusimulator` converter is a software test source that lets you exercise the app and its alarms without connected ECU hardware
 - this grid describes configuration presence in the repo, not a guarantee that every combination has been equally flight-tested
+
+## Is your turbine missing? Send feedback with `senslist.lua`
+
+Support for a turbine is driven entirely by small JSON files (see [Configuration model](#configuration-model)). The one thing the developer cannot guess is **how your converter/ECU exposes its telemetry on Jeti**: which sensor parameter is RPM, which is EGT, and what each numeric status code means. `senslist.lua` captures exactly that from your own transmitter, so you can send it to the developer and get your turbine added without writing any code.
+
+```mermaid
+flowchart LR
+    A[Your turbine, ECU and converter] -->|Jeti telemetry| B[Transmitter]
+    B --> C[senslist.lua]
+    C -->|F5| D["Apps/*.jsn discovery files"]
+    D --> E[GitHub issue or email]
+    A -.->|status codes noted by hand| E
+    E --> F[Developer adds converter, turbine and status JSON]
+    F --> G[New turbine selectable in the ECU app]
+```
+
+`senslist.lua` only **reads** telemetry. It never sends commands to the ECU or the turbine.
+
+### What you need
+
+- the transmitter with the ECU/converter connected and telemetry visible in the Jeti telemetry sensor list
+- `senslist.lua` from this repository
+- a way to read files from the transmitter afterwards (SD card reader, USB, or the Jeti Studio file browser)
+
+### Step by step
+
+1. **Copy `senslist.lua`** into the `Apps/` folder on the transmitter (it does not need compiling, and it is only a temporary tool).
+2. **Add the app**: Menu → Applications → User applications → add **SensorList**.
+3. **Power the ECU and converter first** and check that its sensors show up in the transmitter's telemetry sensor list. `senslist.lua` reads the sensor list **once, when the app starts**. If it later shows `No sensors found`, restart the transmitter (or remove and re-add the app) with the ECU already online.
+4. **Open Menu → Applications → SensorList.** Every telemetry group is shown as a `--- header ---` followed by one row per parameter:
+
+   ```text
+   P2  EGT        634 °C
+   P8  RPM        0 ? rpm
+   ```
+
+   - `P<n>` is the sensor **param number** the developer needs
+   - a trailing `?` means the sensor is not reporting valid data yet
+   - the display only refreshes when you press a key, so press **F1** to update the live values
+   - **Up/Down** scrolls when there are more rows than fit on screen
+5. **Make the values move.** Turn the turbine over, change throttle, and let the ECU step through its states while you press **F1** and watch the rows. Values that never change, or that stay `?`, tell the developer which parameters your converter does not provide.
+6. **Record the status codes by hand.** `senslist.lua` shows the raw numeric status value but not its meaning. Each time the turbine changes state, write down the number from the status row and the name the ECU or its manual gives that state (for example `9 = Burner on`). Also note error/failure codes if your ECU can produce them safely, for example from its manual or by triggering them on the bench.
+7. **Press F5** to save the discovery files. You get one file per sensor group at `Apps/<sensor label>.jsn` (existing files with the same name are overwritten). Press F5 while the turbine is running if you can, so the values and `max` fields in the files are realistic.
+8. **Copy the `Apps/*.jsn` files** off the transmitter. Only the files for your ECU/converter sensor group are needed, not unrelated sensors such as RX or battery telemetry.
+9. **Send the feedback** (see below).
+10. **Remove `senslist.lua`** from the transmitter when you are done to free memory.
+
+### What to send
+
+Open a GitHub issue at <https://github.com/thomasekdahlN/jeti/issues> titled `New turbine support: <make> <model>`, and attach the files. If you cannot use GitHub, email the author at thomas@ekdahl.no. Include:
+
+| Item | Example |
+| --- | --- |
+| Turbine make and model | `Kingtech K-100G4`, `JetCat P100-RX` |
+| ECU / converter | `V-Speak`, `Digitech`, `CB Electroniks`, `Xicoy`, own build |
+| ECU firmware version, if known | `v2.4` |
+| Transmitter model and `ecu.lc` or `ecu_16.lc` | `DS-24 II`, `ecu.lc` |
+| The `Apps/<sensor label>.jsn` file(s) from F5 | attached |
+| Status code table | see below |
+| Whether fuel counts **down** (remaining) or **up** (consumed) | `fuel starts at tank size and goes down` |
+| Turbine data sheet or manual with limits | RPM min/max, EGT max, pump voltage limits, link or PDF |
+| A debug console log, if the ECU app shows `Err` | photo of the CMD screen |
+
+Status code table, one line per state you saw:
+
+```text
+Code  ECU says
+ -3   Timeout
+  0   Off
+  3   Cooling
+  4   Ready
+  9   Burner on
+ 20   Running
+```
+
+If the ECU app is already running with the closest existing turbine and logs `Unknown status code: <n>`, include those `<n>` values too. They are exactly the codes missing from the converter's `statusmap`.
+
+### What the developer does with it
+
+```mermaid
+sequenceDiagram
+    actor U as You
+    participant S as senslist.lua
+    actor D as Developer
+    participant R as Repository
+    U->>S: Open SensorList with ECU online
+    S-->>U: Sensor groups, param numbers, live values
+    U->>S: F5
+    S-->>U: Apps/label.jsn written
+    U->>D: Issue with files, status code table, turbine info
+    D->>R: converter config.jsn with sensormap and statusmap
+    D->>R: turbine preset and status JSON
+    D-->>U: New release or a test build
+    U->>D: Reports if it works on the real turbine
+```
+
+You do not need to understand the JSON. If you would like to add the config yourself, the [technical reference below](#from-senslist-output-to-a-converter-config) explains each step.
 
 ## Installation on a transmitter
 
@@ -428,6 +527,39 @@ flowchart LR
     G --> J[Audio / message / haptic]
 ```
 
+### Status decoding
+
+Raw numeric ECU status codes are turned into named statuses in two lookups. This is why a new turbine usually needs both a converter `statusmap` and a matching `status/<turbine>.jsn`:
+
+```mermaid
+flowchart TD
+    A[Raw status sensor value] --> B{Sensor valid?}
+    B -->|No| C[Show OFFLINE]
+    B -->|Yes| D["statusmap lookup in converter config.jsn"]
+    D -->|Code missing| E["Log: Unknown status code"]
+    D -->|Name found| F{Same as previous status?}
+    F -->|Yes| G[Do nothing]
+    F -->|No| H{Startup grace period over?}
+    H -->|No| G
+    H -->|Yes| I["status/turbine.jsn lookup by name"]
+    I -->|Name missing| J["Log: Unknown status config"]
+    I -->|Found| K["Alarm helper: audio, message, haptic"]
+```
+
+### Configuration assembly
+
+```mermaid
+flowchart LR
+    T["turbine/turbine/preset.jsn"] --> C[Runtime config]
+    B["batterypack/preset.jsn"] --> C
+    F["fuel/config.jsn"] --> C
+    S["status/turbine.jsn"] --> C
+    V["converter/converter/turbine/config.jsn"] --> C
+    C --> R[ecu.lua runtime loop]
+```
+
+`ecu_16.lua` uses the `turbine_16/`, `batterypack_16/`, and `fuel_16/` folders plus the same converter config, and takes its status alert behavior from the turbine `_16` preset instead of `status/<turbine>.jsn`. Its status decoding also shows `Status <n>` for an unmapped code instead of logging an error.
+
 ### Startup flow
 
 ```mermaid
@@ -474,18 +606,19 @@ All `.jsn` files are parsed as strict JSON. Keep them strict:
 
 One malformed `.jsn` file is enough to break startup or leave the app in an unusable configuration.
 
-### Using `senslist.lua` to add support for a new turbine
+### From `senslist.lua` output to a converter config
 
-`senslist.lua` is a discovery utility for learning how a converter or ECU exposes telemetry on Jeti. Install it as a temporary app when you need to build or verify a converter mapping for a new turbine or converter family.
+This section is for contributors who want to turn a `senslist.lua` capture into repository config files. If you only want to **request** support, follow [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua) instead.
 
-#### What it does
+#### What `senslist.lua` does
 
-- reads all telemetry sensors from `system.getSensors()` and polls live values via `system.getSensorByID()` every loop cycle
-- displays all sensor groups and their parameters with live values in the **Applications menu** (Menu → Applications → SensorList)
-- shows `param`, `label`, `unit`, `type`, `decimals`, live `value`, peak `max`, and a `?` indicator for sensors not yet reporting valid data
-- on **F1**: refreshes the display with the latest polled values
+- reads all telemetry sensors from `system.getSensors()` once at app start (GPS-type sensors, types 5 and 9, are skipped because their values are not numeric)
+- polls live values via `system.getSensorByID()` every loop cycle
+- displays all sensor groups and their parameters in the **Applications menu** (Menu → Applications → SensorList), 8 rows at a time
+- shows `param`, `label`, live value, unit, and a `?` indicator for sensors not yet reporting valid data
+- redraws the form on any key press, so **F1** refreshes the live values and **Up/Down** scrolls
 - on **F5**: writes one valid JSON discovery file per top-level sensor group to `Apps/<sensor-label>.jsn`, overwriting any existing file
-- prints a formatted summary to the debug console
+- prints a summary to the debug console
 
 #### What it does not do
 
@@ -519,13 +652,26 @@ This file is a discovery record only. It is not a finished `ecu/converter/` conf
 
 #### Recommended workflow
 
-1. copy `senslist.lua` to the transmitter or emulator as a temporary app
-2. power the ECU and converter so live telemetry is available
-3. open Menu → Applications → SensorList
-4. wait until the live values in the form look stable and reasonable
-5. press **F5** to write the JSON discovery files to `Apps/`
-6. note the top-level sensor label and each child parameter
-7. translate child labels into ECU app runtime names:
+```mermaid
+flowchart TD
+    A["senslist.lua capture<br/>Apps/label.jsn + status code table"] --> B[Map params to runtime names]
+    B --> C["ecu/converter/converter/turbine/config.jsn<br/>sensormap, fuel.countingdown, statusmap"]
+    A --> D[Status names from the ECU manual]
+    D --> C
+    D --> E["ecu/status/turbine.jsn<br/>audio, message, haptic per status"]
+    A --> F[Limits from the turbine data sheet]
+    F --> G["ecu/turbine/turbine/preset.jsn<br/>and ecu/turbine_16/turbine/preset.jsn"]
+    C --> H[Test in emulator or on transmitter]
+    E --> H
+    G --> H
+    H --> I{Debug log clean?}
+    I -->|No| B
+    I -->|Yes| J[Commit and release]
+```
+
+1. collect the capture as described in [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua), or receive it from a user
+2. note the top-level sensor label and each child parameter
+3. translate child labels into ECU app runtime names:
    - `rpm` — turbine RPM
    - `rpm2` — shaft RPM or secondary RPM
    - `egt` — exhaust gas temperature
@@ -533,10 +679,20 @@ This file is a discovery record only. It is not a finished `ecu/converter/` conf
    - `ecuv` — ECU battery voltage
    - `fuel` — remaining or consumed fuel
    - `status` — raw numeric ECU status code
-8. create or update `ecu/converter/<converter>/<turbine>/config.jsn` with the discovered `param` numbers
-9. observe the raw `status` sensor value as the ECU changes state and build `statusmap` from numeric codes to status text
-10. create or update the matching turbine, status, battery, and fuel JSON files
-11. test in the emulator or on the transmitter and watch the debug log for missing keys, unknown statuses, or missing files
+4. create or update `ecu/converter/<converter>/<turbine>/config.jsn` with the discovered `param` numbers, and set `fuel.countingdown` according to whether the fuel value falls or rises during a run
+5. build `statusmap` from the numeric status codes the user reported (a status code that is missing here is logged as `Unknown status code`)
+6. create or update the matching turbine, status, battery, and fuel JSON files
+7. test in the emulator or on the transmitter and watch the debug log for missing keys, unknown statuses, or missing files
+8. ask the reporter to confirm on their real turbine before releasing
+
+A fragment of a `senslist.lua` capture and the config it leads to:
+
+```text
+senslist.lua row            config.jsn sensormap
+P2  EGT      634 °C     ->  "egt"    : "2"
+P8  RPM    41200 rpm    ->  "rpm"    : "8"
+P1  Status     4        ->  "status" : "1"   and   "statusmap": { "4": "Ready" }
+```
 
 The ECU app stores the selected top-level sensor `id` when the user picks the ECU sensor in setup. Configuration authors normally only need the `param` numbers from `senslist.lua`.
 
@@ -791,7 +947,7 @@ If you want the same turbine family to be selectable in both active entrypoints,
 │   ├── status/            # Turbine status definitions
 │   ├── turbine/           # Turbine profiles for full app
 │   └── turbine_16/        # Turbine profiles for low-memory app
-└── jeti.sh                # Packaging helper for app-store archive
+└── pack_for_jeti_appstore.sh  # Packaging helper for app-store archive
 ```
 
 ### Shared helper modules
@@ -854,12 +1010,11 @@ stylua ecu.lua ecu_16.lua ecu/lib
 
 ### Packaging
 
-The repository includes helper scripts for preparing a Jeti app-store style archive:
+The repository includes helper script for preparing a Jeti app-store style archive:
 
-- `jeti.sh`
 - `pack_for_jeti_appstore.sh`
 
-These scripts collect the compiled `.lc` files, the `ecu/` assets, and supporting metadata into a distributable archive.
+This script collects the compiled `.lc` files, the `ecu/` assets, and supporting metadata into a distributable archive.
 
 ### External documentation
 
