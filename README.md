@@ -282,7 +282,7 @@ flowchart LR
     A[Your turbine, ECU and converter] -->|Jeti telemetry| B[Transmitter]
     B --> C[senslist.lua]
     C -->|F5| D["Apps/*.jsn discovery files"]
-    D --> E[GitHub issue or email]
+    D --> E[GitHub issue]
     A -.->|status codes noted by hand| E
     E --> F[Developer adds converter, turbine and status JSON]
     F --> G[New turbine selectable in the ECU app]
@@ -325,7 +325,7 @@ flowchart LR
 
 ### What to send
 
-Open a GitHub issue at <https://github.com/thomasekdahlN/jeti-ecu-telemetry-dashboard/issues> titled `New turbine support: <make> <model>`, and attach the files. If you cannot use GitHub, email the author at thomas@ekdahl.no. Include:
+Open a GitHub issue at <https://github.com/thomasekdahlN/jeti-ecu-telemetry-dashboard/issues> titled `New turbine support: <make> <model>`, and attach the files. Include:
 
 | Item | Example |
 | --- | --- |
