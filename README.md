@@ -1,54 +1,100 @@
-# Jeti ECU Turbine Telemetry
+<div align="center">
 
-Jeti Lua application for turbine ECU monitoring, alarm handling, and telemetry presentation on Jeti transmitters.
+<img src="assets/banner.svg" alt="Jeti ECU Turbine Telemetry" width="100%">
 
-The project provides a configurable dashboard for turbine status, RPM, RPM2/shaft RPM, EGT, ECU voltage, pump voltage, and fuel, with support for voice alerts, message popups, haptic feedback where available, and centralized debug logging.
+<p>
+  <img alt="Lua 5.3" src="https://img.shields.io/badge/Lua-5.3-2C2D72?style=for-the-badge&logo=lua&logoColor=white">
+  <img alt="Jeti DC/DS" src="https://img.shields.io/badge/Jeti-DC%20%2F%20DS-0ea5e9?style=for-the-badge">
+  <img alt="Silent cockpit" src="https://img.shields.io/badge/Cockpit-Silent-111827?style=for-the-badge">
+  <img alt="Version 3.0" src="https://img.shields.io/badge/Version-3.0-ff8a3d?style=for-the-badge">
+  <img alt="MIT license" src="https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge">
+</p>
 
-## Design philosophy: silent (black) cockpit
+<p>
+  <b>Turbine ECU monitoring, alarm handling and a live dashboard for Jeti transmitters.</b><br>
+  RPM &middot; RPM2 &middot; EGT &middot; ECU voltage &middot; pump voltage &middot; fuel &middot; status
+</p>
+
+<p>
+  <a href="#-quick-start"><b>Quick start</b></a> &nbsp;&bull;&nbsp;
+  <a href="#-features"><b>Features</b></a> &nbsp;&bull;&nbsp;
+  <a href="#-supported-combinations-grid"><b>Supported turbines</b></a> &nbsp;&bull;&nbsp;
+  <a href="#-is-your-turbine-missing-send-feedback-with-senslistlua"><b>Request your turbine</b></a> &nbsp;&bull;&nbsp;
+  <a href="#-errors-crashes-and-troubleshooting-on-the-transmitter"><b>Troubleshooting</b></a> &nbsp;&bull;&nbsp;
+  <a href="#-technical-reference"><b>Technical reference</b></a>
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <h3>🤫 Silent cockpit</h3>
+      No sound, vibration or popup in normal operation. If it speaks, it matters.
+    </td>
+    <td align="center" width="33%">
+      <h3>🚨 20+ alarms in one app</h3>
+      One configurable Lua app replaces a pile of per-sensor transmitter alarm setups.
+    </td>
+    <td align="center" width="33%">
+      <h3>📈 Flight-log timeline</h3>
+      Every alarm and status change lands on the Jeti log timeline for post-flight analysis.
+    </td>
+  </tr>
+</table>
+
+</div>
+
+## 🤫 Design philosophy: silent (black) cockpit
+
+> [!TIP]
+> **A warning always means something real.** In normal operation the app stays **completely silent**: no sounds, no vibration, no popups. It only asks for your attention when an actual **alarm condition** is detected, so you stay focused on flying.
 
 This app is built around a **silent cockpit** (also called a black cockpit) principle:
 
-- when everything is normal, the system stays **completely silent** — no sounds, no vibration, no popups
-- it only asks for your attention when an actual **alarm condition** is detected, so a warning always means something real
-- this keeps you focused on flying and makes every alert meaningful instead of background noise
+- 🔇 when everything is normal, the system stays **completely silent**
+- 🚨 it only asks for your attention when a real **alarm condition** is detected
+- 🎯 every alert is meaningful instead of background noise
 
 On top of that, the app is designed to **replace at least 20 separate transmitter alarm setups** (per-sensor high/low alarms for RPM, shaft RPM, EGT, ECU voltage, pump voltage, the fuel-level thresholds, the fuel-sensor fault, the ECU-offline watchdog, and every named turbine status) with a single, configurable Lua app that has a **graphical dashboard**.
 
 Every alarm is also written to the **Jeti flight log timeline** on the model it runs on, so you can do proper **post-flight analysis** of exactly which alarms fired and when.
 
-## Quick start
+## 🚀 Quick start
 
 If you want the shortest path to a working setup:
 
-1. copy `ecu.lc` or `ecu_16.lc` to the transmitter
-2. copy the full `ecu/` directory to the transmitter
-3. add the ECU app from the transmitter Applications menu
-4. choose converter family, turbine family, turbine config, battery config, and ECU sensor
-5. verify the app starts without `Err`
-6. if it shows `Err`, open the debug console and use the log output to find the failing config or sensor mapping
+| Step | Do this |
+| :---: | :--- |
+| **1** | 📦 Copy `ecu.lc` or `ecu_16.lc` to the transmitter |
+| **2** | 📂 Copy the full `ecu/` directory to the transmitter |
+| **3** | ➕ Add the ECU app from the transmitter Applications menu |
+| **4** | 🎛️ Choose converter family, turbine family, turbine config, battery config, and ECU sensor |
+| **5** | ✅ Verify the app starts without `Err` |
+| **6** | 🐞 If it shows `Err`, open the debug console and use the log output to find the failing config or sensor mapping |
 
-Your turbine or converter is not in the list? See [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua) to send the developer the data needed to add it.
+Your turbine or converter is not in the list? See [Is your turbine missing?](#-is-your-turbine-missing-send-feedback-with-senslistlua) to send the developer the data needed to add it.
 
-## Features
+## ✨ Features
 
-- silent-cockpit behavior: stays quiet in normal operation and only alerts on real alarm conditions
-- reads telemetry from a selected ECU sensor source
-- maps converter-specific parameters into a common runtime format
-- applies turbine-specific alarm and status rules from JSON configuration files
-- renders dedicated telemetry windows for live turbine monitoring
-- delays alarm activation during startup stabilization (30 s grace after the first full telemetry read)
-- supports status-driven voice, message, and haptic alerts where available
-- suppresses repeated alarms with timed cooldown behavior (30 s between repeats)
-- arms low-value alarms only after a sensor has reported a real reading, so 0.0 startup values never trigger false alarms
-- handles fuel threshold warnings and critical alerts
-- detects ECU offline conditions after signal loss
-- logs every alarm and status change to the Jeti flight log timeline for post-flight analysis
-- reports important faults through a shared logger to make debugging easier
+| | Capability |
+| :---: | :--- |
+| 🤫 | **Silent cockpit**: stays quiet in normal operation and only alerts on real alarm conditions |
+| 📡 | Reads telemetry from a selected ECU sensor source |
+| 🔀 | Maps converter-specific parameters into a common runtime format |
+| 📋 | Applies turbine-specific alarm and status rules from JSON configuration files |
+| 📟 | Renders dedicated telemetry windows for live turbine monitoring |
+| ⏳ | Delays alarm activation during startup stabilization (30 s grace after the first full telemetry read) |
+| 🔊 | Supports status-driven voice, message, and haptic alerts where available |
+| 🔁 | Suppresses repeated alarms with timed cooldown behavior (30 s between repeats) |
+| 🧯 | Arms low-value alarms only after a sensor has reported a real reading, so 0.0 startup values never trigger false alarms |
+| ⛽ | Handles fuel threshold warnings and critical alerts |
+| 📴 | Detects ECU offline conditions after signal loss |
+| 📈 | Logs every alarm and status change to the Jeti flight log timeline for post-flight analysis |
+| 🪲 | Reports important faults through a shared logger to make debugging easier |
 
-## Feature sets
+## 🧩 Feature sets
 
 | Feature set | Target | Notes |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | `ecu.lua` | Jeti transmitters with more memory | Main full-featured entrypoint |
 | `ecu_16.lua` | Older/lower-memory Jeti transmitters | Leaner runtime with reduced feature footprint |
 | `ecu.lc` | Compiled install for newer transmitters | Compiled artifact of `ecu.lua` |
@@ -56,21 +102,24 @@ Your turbine or converter is not in the list? See [Is your turbine missing?](#is
 
 The root entrypoints above are the active scripts.
 
-## Supported Jeti transmitters
+## 📡 Supported Jeti transmitters
 
 The `HARDWARE` column in `Apps.csv` controls which transmitters are offered the ECU app in the Jeti App Store. The table below lists all known Jeti transmitter hardware codes and whether the ECU script is currently offered to them.
 
+<details>
+<summary><b>Show all Jeti transmitter hardware codes</b></summary>
+
 | Transmitter | Code | Supported |
-| --- | --- | --- |
+| :--- | :---: | :---: |
 | DC-16 II (V2) | 652 | ✅ |
 | DS-16 II (V2) | 653 | ✅ |
-| DC-16 | 674 | — |
-| DS-16 | 675 | — |
-| DS-14 | 676 | — |
-| DC-14 | 677 | — |
+| DC-16 | 674 | ➖ |
+| DS-16 | 675 | ➖ |
+| DS-14 | 676 | ➖ |
+| DC-14 | 677 | ➖ |
 | DC-24 | 678 | ✅ |
 | DS-24 | 679 | ✅ |
-| DS-12 | 680 | — |
+| DS-12 | 680 | ➖ |
 | DC-14 II (V2) | 3857 | ✅ |
 | DS-14 II (V2) | 3858 | ✅ |
 | DC-24 (II) | 3859 | ✅ |
@@ -82,32 +131,34 @@ The `HARDWARE` column in `Apps.csv` controls which transmitters are offered the 
 | DS-12 II | 3865 | ✅ |
 | DC-24 II (V2) | 3866 | ✅ |
 
+</details>
+
 Notes:
 
-- `✅` means the code is listed in `Apps.csv` `HARDWARE`, so the app is offered to that transmitter in the App Store.
-- `—` means the code is a known Jeti transmitter but is not currently offered the app.
+- ✅ means the code is listed in `Apps.csv` `HARDWARE`, so the app is offered to that transmitter in the App Store.
+- ➖ means the code is a known Jeti transmitter but is not currently offered the app.
 - Some models share more than one hardware code across firmware generations, which is why several II/V2 radios appear more than once.
 - Hardware codes are sourced from the [jemoview](https://github.com/werinza/jemoview) transmitter type-code table.
 
 ### Differences between `ecu.lua` and `ecu_16.lua`
 
 | Capability | `ecu.lua` | `ecu_16.lua` |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | Telemetry windows | 2 (status/fuel and RPM/EGT/battery) | 1 (status/fuel/battery) |
-| RPM2 / shaft RPM | ✅ | — |
+| RPM2 / shaft RPM | ✅ | ➖ |
 | Alarm audio control switch | separate per-channel switch | single on/off switch for all alarms |
-| Alarm message control switch | separate per-channel switch | — |
-| Alarm haptic control switch | separate per-channel switch | — |
+| Alarm message control switch | separate per-channel switch | ➖ |
+| Alarm haptic control switch | separate per-channel switch | ➖ |
 | Alarm config format | nested objects with `audio`, `message`, `haptic` | plain numeric `high` / `low` thresholds |
 | Fuel alarms | multi-threshold array with full alarm objects | percentage `warning` and `critical` thresholds |
 | Config validation | strict, with logged errors per field | minimal, fails silently |
 | Config load protection | `pcall`-guarded | unguarded |
 | Centralized logging | `loghelper.lua` (info/warn/error) | `print()` only |
 | Helper libraries | external `require` modules | all helpers inlined |
-| Transmitter control channel | — | registers a turbine-off control output |
+| Transmitter control channel | ➖ | registers a turbine-off control output |
 | Config directories | `turbine/`, `batterypack/`, `fuel/` | `turbine_16/`, `batterypack_16/`, `fuel_16/` |
 
-## Telemetry windows and visualization
+## 📟 Telemetry windows and visualization
 
 The active telemetry presentation is intentionally simple and fast to render on the transmitter.
 
@@ -160,7 +211,7 @@ RPM and EGT are not shown in the telemetry window in the low-memory version. The
 
 There are additional experimental/legacy window modules in the repository, but they are **not registered by default** in the active runtime.
 
-## Supported configuration families
+## 🔌 Supported configuration families
 
 The repository currently contains configuration folders for these converter families:
 
@@ -196,34 +247,37 @@ The turbine profile folders (`ecu/turbine/` and `ecu/turbine_16/`) currently inc
 - `xicoyv10`
 - `xicoyvx`
 
-## Supported combinations grid
+## 🧮 Supported combinations grid
 
 This grid reflects the current converter-to-turbine combinations present in the repository configuration folders.
 
 | Converter \ Turbine | `amt` | `evojet` | `graupner` | `hammer` | `hornet` | `jakadofsky` | `jetcat` | `kingtech` | `kingtechg1` | `kingtechg2` | `kingtechg3` | `kingtechg4` | `kingtechg5` | `lambert` | `pbs` | `xicoyv6` | `xicoyv10` | `xicoyvx` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `cbelectroniks` | — | — | — | — | — | — | ✅ | — | — | — | — | — | — | — | — | ✅ | ✅ | — |
-| `digitech` | — | ✅ | ✅ | ✅ | ✅ | — | ✅ | — | ✅ | ✅ | — | — | — | ✅ | — | ✅ | ✅ | — |
-| `ecusimulator` | ✅ | ✅ | — | — | ✅ | ✅ | ✅ | — | — | — | — | — | — | — | ✅ | — | — | — |
-| `jetcat` | — | — | — | — | — | — | ✅ | — | — | — | — | — | — | — | — | — | — | — |
-| `kingtech` | — | — | — | — | — | — | — | — | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — |
-| `vspeak` | ✅ | ✅ | — | — | ✅ | ✅ | ✅ | ✅ | — | — | — | — | — | — | ✅ | — | — | — |
-| `xicoy` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✅ | ✅ | ✅ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `cbelectroniks` | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ✅ | ➖ |
+| `digitech` | ➖ | ✅ | ✅ | ✅ | ✅ | ➖ | ✅ | ➖ | ✅ | ✅ | ➖ | ➖ | ➖ | ✅ | ➖ | ✅ | ✅ | ➖ |
+| `ecusimulator` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ➖ | ➖ | ➖ |
+| `jetcat` | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ |
+| `kingtech` | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
+| `vspeak` | ✅ | ✅ | ➖ | ➖ | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ➖ | ➖ | ➖ |
+| `xicoy` | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ➖ | ✅ | ✅ | ✅ |
 
 Notes:
 
-- `✅` means a matching converter/turbine folder combination exists in the repo
-- `—` means there is no matching converter mapping folder currently in the repo
+- ✅ means a matching converter/turbine folder combination exists in the repo
+- ➖ means there is no matching converter mapping folder currently in the repo
 - turbine profile folders `behotec`, `colibri`, and `orbit` exist (with matching status files), but they do not currently appear in any converter-family mapping folder
 - some names intentionally differ between converter and turbine families, for example `vspeak -> kingtech` and `kingtech -> kingtechg1`…`kingtechg5`
 - the `ecusimulator` converter is a software test source that lets you exercise the app and its alarms without connected ECU hardware
 - this grid describes configuration presence in the repo, not a guarantee that every combination has been equally flight-tested
 
-## Is your turbine missing? Send feedback with `senslist.lua`
+<p align="center"><img src="assets/divider.svg" alt="" width="100%" height="6"></p>
+
+## 🔧 Is your turbine missing? Send feedback with `senslist.lua`
 
 Support for a turbine is driven entirely by small JSON files (see [Configuration model](#configuration-model)). The one thing the developer cannot guess is **how your converter/ECU exposes its telemetry on Jeti**: which sensor parameter is RPM, which is EGT, and what each numeric status code means. `senslist.lua` captures exactly that from your own transmitter, so you can send it to the developer and get your turbine added without writing any code.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart LR
     A[Your turbine, ECU and converter] -->|Jeti telemetry| B[Transmitter]
     B --> C[senslist.lua]
@@ -234,7 +288,11 @@ flowchart LR
     F --> G[New turbine selectable in the ECU app]
 ```
 
-`senslist.lua` only **reads** telemetry. It never sends commands to the ECU or the turbine.
+> [!NOTE]
+> `senslist.lua` only **reads** telemetry. It never sends commands to the ECU or the turbine.
+
+> [!WARNING]
+> Run the turbine only under your normal safety procedures while collecting status codes.
 
 ### What you need
 
@@ -298,6 +356,7 @@ If the ECU app is already running with the closest existing turbine and logs `Un
 ### What the developer does with it
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 sequenceDiagram
     actor U as You
     participant S as senslist.lua
@@ -314,9 +373,9 @@ sequenceDiagram
     U->>D: Reports if it works on the real turbine
 ```
 
-You do not need to understand the JSON. If you would like to add the config yourself, the [technical reference below](#from-senslist-output-to-a-converter-config) explains each step.
+You do not need to understand the JSON. If you would like to add the config yourself, the [technical reference below](#from-senslistlua-output-to-a-converter-config) explains each step.
 
-## Installation on a transmitter
+## 📥 Installation on a transmitter
 
 ### Option 1: Install with Jeti Studio
 
@@ -343,7 +402,7 @@ After that:
 3. add the ECU app
 4. select converter type, turbine type, turbine config, battery config, and ECU sensor
 
-## First-time setup on the transmitter
+## 📝 First-time setup on the transmitter
 
 Typical setup steps:
 
@@ -371,7 +430,7 @@ Most combinations are designed so you do not need to edit JSON manually.
 
 Assigning a switch is optional. If no switch is assigned, alarms are always enabled.
 
-## Logging and debugging
+## 📜 Logging and debugging
 
 ### Alarm and status logging to the Jeti flight log timeline
 
@@ -400,7 +459,7 @@ If the app reports `Err` on the transmitter:
 3. capture the debug console output
 4. include that output when reporting issues
 
-## Errors, crashes, and troubleshooting on the transmitter
+## 🆘 Errors, crashes, and troubleshooting on the transmitter
 
 ### Common error situations
 
@@ -435,6 +494,9 @@ Typical log lines look like this:
 - `[ECU-16][WARN][processStatus] Unknown status code: ...`
 
 ### How to solve transmitter startup failures or crashes
+
+<details>
+<summary><b>Open the 10-step startup checklist</b></summary>
 
 Use this checklist in order:
 
@@ -475,6 +537,8 @@ Use this checklist in order:
     - add the app again
     - collect a fresh debug log before changing other settings
 
+</details>
+
 ### Best way to report a crash
 
 When reporting a transmitter crash or startup failure, include:
@@ -486,31 +550,46 @@ When reporting a transmitter crash or startup failure, include:
 - a photo or screenshot of the **CMD/debug console log**
 - whether the app showed `Err`, `NO CONFIG`, `UNCONFIG`, or `OFFLINE`
 
-## Legacy videos
+## 🎬 Legacy videos
 
-- Installation and setup: https://youtu.be/tsEkAW4Y2tU
-- Normal usage simulation: https://youtu.be/evyAzlbLs68
-- Alarm-heavy flight simulation: https://youtu.be/_tN6GDu43rU
-- ECU simulator test rig: https://youtu.be/EmGTHrpVQJE
+| | Video |
+| :---: | :--- |
+| ▶️ | [Installation and setup](https://youtu.be/tsEkAW4Y2tU) |
+| ▶️ | [Normal usage simulation](https://youtu.be/evyAzlbLs68) |
+| ▶️ | [Alarm-heavy flight simulation](https://youtu.be/_tN6GDu43rU) |
+| ▶️ | [ECU simulator test rig](https://youtu.be/EmGTHrpVQJE) |
 
-## Screenshots
+## 📸 Screenshots
 
 Representative screenshots from installation, alarms, and telemetry presentation:
 
-![alarm - ecu offline](https://cloud.githubusercontent.com/assets/26059207/25081407/87552642-234a-11e7-897d-e4f2ae4de45f.jpg)
-![gui - configuration](https://cloud.githubusercontent.com/assets/26059207/25081408/875af9a0-234a-11e7-8c05-8a3d246c3d4a.jpg)
-![alarm - rc off](https://cloud.githubusercontent.com/assets/26059207/25081412/8a63e396-234a-11e7-821d-f0bab51e141d.jpg)
-![alarm - shaft rpm low](https://cloud.githubusercontent.com/assets/26059207/25081413/8a64ccf2-234a-11e7-8d4c-b7ea80fa20b6.jpg)
-![display - ecu battery and fuel indicators](https://cloud.githubusercontent.com/assets/26059207/25081414/8a7c2f32-234a-11e7-832a-1a6286d56952.jpg)
-![display - ecu offline](https://cloud.githubusercontent.com/assets/26059207/25081415/8a7fcb42-234a-11e7-8dcd-ee8d33662952.jpg)
-![install - application added and running](https://user-images.githubusercontent.com/26059207/31859266-ace26e62-b709-11e7-8dd3-b01205e7d07a.png)
-![install - debug info after pressing the command button](https://user-images.githubusercontent.com/26059207/31859268-ad135fd6-b709-11e7-8338-7fd456c0731d.png)
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081407/87552642-234a-11e7-897d-e4f2ae4de45f.jpg" alt="alarm - ecu offline" width="100%"><br><sub>alarm - ecu offline</sub></td>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081408/875af9a0-234a-11e7-8c05-8a3d246c3d4a.jpg" alt="gui - configuration" width="100%"><br><sub>gui - configuration</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081412/8a63e396-234a-11e7-821d-f0bab51e141d.jpg" alt="alarm - rc off" width="100%"><br><sub>alarm - rc off</sub></td>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081413/8a64ccf2-234a-11e7-8d4c-b7ea80fa20b6.jpg" alt="alarm - shaft rpm low" width="100%"><br><sub>alarm - shaft rpm low</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081414/8a7c2f32-234a-11e7-832a-1a6286d56952.jpg" alt="display - ecu battery and fuel indicators" width="100%"><br><sub>display - ecu battery and fuel indicators</sub></td>
+    <td align="center" width="50%"><img src="https://cloud.githubusercontent.com/assets/26059207/25081415/8a7fcb42-234a-11e7-8dcd-ee8d33662952.jpg" alt="display - ecu offline" width="100%"><br><sub>display - ecu offline</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><img src="https://user-images.githubusercontent.com/26059207/31859266-ace26e62-b709-11e7-8dd3-b01205e7d07a.png" alt="install - application added and running" width="100%"><br><sub>install - application added and running</sub></td>
+    <td align="center" width="50%"><img src="https://user-images.githubusercontent.com/26059207/31859268-ad135fd6-b709-11e7-8338-7fd456c0731d.png" alt="install - debug info after pressing the command button" width="100%"><br><sub>install - debug info after pressing the command button</sub></td>
+  </tr>
+</table>
 
-## Technical reference
+<p align="center"><img src="assets/divider.svg" alt="" width="100%" height="6"></p>
+
+## 🧠 Technical reference
 
 ### Runtime architecture
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart LR
     A[Selected ECU sensor] --> B[Converter sensor map]
     B --> C[Normalized runtime state]
@@ -532,6 +611,7 @@ flowchart LR
 Raw numeric ECU status codes are turned into named statuses in two lookups. This is why a new turbine usually needs both a converter `statusmap` and a matching `status/<turbine>.jsn`:
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart TD
     A[Raw status sensor value] --> B{Sensor valid?}
     B -->|No| C[Show OFFLINE]
@@ -549,6 +629,7 @@ flowchart TD
 ### Configuration assembly
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart LR
     T["turbine/turbine/preset.jsn"] --> C[Runtime config]
     B["batterypack/preset.jsn"] --> C
@@ -563,6 +644,7 @@ flowchart LR
 ### Startup flow
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart TD
     A[App init] --> B[Load persisted selections]
     B --> C[Refresh available converter and turbine choices]
@@ -604,11 +686,12 @@ All `.jsn` files are parsed as strict JSON. Keep them strict:
 - quoted keys and string values
 - matching braces and brackets
 
-One malformed `.jsn` file is enough to break startup or leave the app in an unusable configuration.
+> [!CAUTION]
+> One malformed `.jsn` file is enough to break startup or leave the app in an unusable configuration.
 
 ### From `senslist.lua` output to a converter config
 
-This section is for contributors who want to turn a `senslist.lua` capture into repository config files. If you only want to **request** support, follow [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua) instead.
+This section is for contributors who want to turn a `senslist.lua` capture into repository config files. If you only want to **request** support, follow [Is your turbine missing?](#-is-your-turbine-missing-send-feedback-with-senslistlua) instead.
 
 #### What `senslist.lua` does
 
@@ -648,11 +731,13 @@ Each `Apps/<sensor-label>.jsn` contains the full descriptor and last-polled live
 }
 ```
 
-This file is a discovery record only. It is not a finished `ecu/converter/` config file and must not be copied directly into `ecu/`.
+> [!IMPORTANT]
+> This file is a discovery record only. It is not a finished `ecu/converter/` config file and must not be copied directly into `ecu/`.
 
 #### Recommended workflow
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#ffb072','primaryTextColor':'#1b1b1f','primaryBorderColor':'#c2410c','secondaryColor':'#bae6fd','tertiaryColor':'#e2e8f0','lineColor':'#8b95a7','textColor':'#8b95a7','signalColor':'#8b95a7','signalTextColor':'#8b95a7','actorBkg':'#ffb072','actorBorder':'#c2410c','actorTextColor':'#1b1b1f','noteBkgColor':'#bae6fd','noteTextColor':'#1b1b1f'}}}%%
 flowchart TD
     A["senslist.lua capture<br/>Apps/label.jsn + status code table"] --> B[Map params to runtime names]
     B --> C["ecu/converter/converter/turbine/config.jsn<br/>sensormap, fuel.countingdown, statusmap"]
@@ -669,7 +754,7 @@ flowchart TD
     I -->|Yes| J[Commit and release]
 ```
 
-1. collect the capture as described in [Is your turbine missing?](#is-your-turbine-missing-send-feedback-with-senslistlua), or receive it from a user
+1. collect the capture as described in [Is your turbine missing?](#-is-your-turbine-missing-send-feedback-with-senslistlua), or receive it from a user
 2. note the top-level sensor label and each child parameter
 3. translate child labels into ECU app runtime names:
    - `rpm` — turbine RPM
@@ -703,6 +788,9 @@ In practice:
 - if the named statuses differ, you also need a matching `ecu/status/<turbine>.jsn`
 
 ### JSON file reference
+
+<details>
+<summary><b>Show all JSON file schemas</b></summary>
 
 #### `ecu/converter/<converter>/<turbine>/config.jsn`
 
@@ -908,6 +996,8 @@ To add a new language:
 2. Translate the values only; do not rename, add, or remove keys.
 3. Keep every file at the same 13 keys so the interface stays complete in all languages.
 
+</details>
+
 ### Minimal file set when adding support
 
 For a new full-version converter/turbine combination, the usual minimum is:
@@ -968,6 +1058,9 @@ Important helpers under `ecu/lib/`:
 
 ### Local development
 
+<details>
+<summary><b>Toolchain and validation commands</b></summary>
+
 #### Lua version
 
 This project targets **Lua 5.3** behavior, matching the Jeti Lua environment documented in `docs/JETIDCDS_Lua_API_1.5.pdf`.
@@ -1007,6 +1100,8 @@ Format code when you want a formatting pass:
 ```bash
 stylua ecu.lua ecu_16.lua ecu/lib
 ```
+
+</details>
 
 ### Packaging
 
